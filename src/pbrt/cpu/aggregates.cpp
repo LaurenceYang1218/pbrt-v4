@@ -1160,6 +1160,108 @@ KdTreeAggregate *KdTreeAggregate::Create(std::vector<Primitive> prims,
                                maxPrims, maxDepth);
 }
 
+// UniformGridVoxel Definition
+struct UniformGridVoxel {
+    size_t size() const { return primitives.size(); }
+    UniformGridVoxel() {}
+    UniformGridVoxel(Primitive *p) {
+        allCanIntersect = false;
+        primitives.push_back(p);
+    }
+    void AddPrimitive(Primitive *prim) {
+        primitives.push_back(prim);
+    }
+    bool Intersect(const Ray &ray, ShapeIntersection si);
+    bool IntersectP(const Ray &ray);
+
+private: 
+    std::vector<Primitive*> primitives;
+    bool allCanIntersect;
+
+};
+
+bool UniformGridVoxel::Intersect(const Ray &ray, ShapeIntersection si) {
+    return false;
+}
+
+bool UniformGridVoxel::IntersectP(const Ray &ray) {
+    return false;
+}
+
+// UniformGridAggregate Definitions
+UniformGridAggregate::UniformGridAggregate(std::vector<Primitive> p) 
+    : primitives(std::move(p)) {
+    // Compute bounds and chose grid resolution
+    for (Primitive &prim : primitives) {
+        bounds = Union(bounds, prim.Bounds());
+    }
+    Vector3f delta = bounds.pMax - bounds.pMin;
+    int maxAxis = bounds.MaxDimension();
+    float invMaxWidth = 1.f / delta[maxAxis];
+    assert(invMaxWidth > 0.f);
+    float cubeRoot = 3.f * powf(float(primitives.size()), 1.f / 3.f);
+    float voxelsPerUnitDist = cubeRoot * invMaxWidth;
+    for (int axis = 0; axis < 3; ++axis) {
+        nVoxels[axis] = (int)floorf(delta[axis] * voxelsPerUnitDist + 0.5f);
+        nVoxels[axis] = Clamp(nVoxels[axis], 1, 64);
+    }
+    // Compute voxel widths and allocate voxels
+    for (int axis = 0; axis < 3; ++axis) {
+        width[axis] = delta[axis] / nVoxels[axis];
+        invWidth[axis] = (width[axis] == 0.f) ? 0.f : 1.f / width[axis];
+    }
+    int nv = nVoxels[0] * nVoxels[1] * nVoxels[2];
+    voxels = new UniformGridVoxel*[nv];
+    memset(voxels, 0, nv * sizeof(UniformGridVoxel *));
+    // Add primitives to grid voxels
+    for (size_t i = 0; i < primitives.size(); ++i) {
+        // Find voxel extent of primitive
+        Bounds3f pb = primitives[i].Bounds();
+        int vmin[3], vmax[3];
+        for (int axis = 0; axis < 3; axis++) {
+            vmin[axis] = posToVoxel(pb.pMin, axis);
+            vmax[axis] = posToVoxel(pb.pMax, axis);
+        }
+        // Add primitive to overlapping voxels
+        for (int z = vmin[2]; z <= vmax[2]; ++z) {
+            for (int y = vmin[1]; y <= vmax[1]; ++y) {
+                for (int x = vmin[0]; x <= vmax[0]; ++x) {
+                    int o = offset(x, y, z);
+                    if (!voxels[o]) {
+                        // Allocate new voxel and store primitive to it
+                        voxels[o] = new UniformGridVoxel;
+                        *voxels[o] = UniformGridVoxel(&primitives[i]);
+                    }else {
+                        // Add primitive to already-allocated voxel
+                        voxels[o]->AddPrimitive(&primitives[i]);
+                    }
+                }
+            }
+        }
+    }
+}
+
+UniformGridAggregate::~UniformGridAggregate() {
+    for (int i = 0; i < nVoxels[0] * nVoxels[1] * nVoxels[2]; ++i) {
+        if (voxels[i])
+            voxels[i]->~UniformGridVoxel();
+    }
+}
+
+pstd::optional<ShapeIntersection> UniformGridAggregate::Intersect(const Ray &ray, Float tMax) {
+    return {};
+}
+
+bool UniformGridAggregate::IntersectP(const Ray &ray, Float tMax) const {
+    
+    return true;
+}
+
+UniformGridAggregate *UniformGridAggregate::Create(std::vector<Primitive> prims, const ParameterDictionary &params)
+{
+    return new UniformGridAggregate(prims); 
+}
+
 Primitive CreateAccelerator(const std::string &name, std::vector<Primitive> prims,
                             const ParameterDictionary &parameters) {
     Primitive accel = nullptr;
@@ -1167,6 +1269,8 @@ Primitive CreateAccelerator(const std::string &name, std::vector<Primitive> prim
         accel = BVHAggregate::Create(std::move(prims), parameters);
     else if (name == "kdtree")
         accel = KdTreeAggregate::Create(std::move(prims), parameters);
+    else if (name == "uniformgrid")
+        accel = UniformGridAggregate::Create(std::move(prims), parameters);
     else
         ErrorExit("%s: accelerator type unknown.", name);
 
