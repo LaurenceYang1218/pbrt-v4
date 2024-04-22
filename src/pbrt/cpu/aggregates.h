@@ -138,7 +138,6 @@ class UniformGridAggregate {
     std::vector<Primitive> primitives;
     std::vector<int> primitiveIndexes;
     Bounds3f bounds;
-    pthread_rwlock_t rwMutex;
 };
 
 }  // namespace pbrt
