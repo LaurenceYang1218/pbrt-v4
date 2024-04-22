@@ -1165,26 +1165,36 @@ struct UniformGridVoxel {
     size_t size() const { return primitives.size(); }
     UniformGridVoxel() {}
     UniformGridVoxel(Primitive *p) {
-        allCanIntersect = false;
         primitives.push_back(p);
     }
     void AddPrimitive(Primitive *prim) {
         primitives.push_back(prim);
     }
-    bool Intersect(const Ray &ray, ShapeIntersection si);
-    bool IntersectP(const Ray &ray);
+    pstd::optional<ShapeIntersection> Intersect(const Ray &ray, Float tMax);
+    bool IntersectP(const Ray &ray, Float tMax);
 
 private: 
     std::vector<Primitive*> primitives;
-    bool allCanIntersect;
-
 };
 
-bool UniformGridVoxel::Intersect(const Ray &ray, ShapeIntersection si) {
-    return false;
+pstd::optional<ShapeIntersection> UniformGridVoxel::Intersect(const Ray &ray, Float tMax) {
+    
+    pstd::optional<ShapeIntersection> si;
+    for (size_t i = 0; i < primitives.size(); i++) {
+        Primitive* prim = primitives[i];
+        pstd::optional<ShapeIntersection> primsi =  prim->Intersect(ray, tMax);
+        if (primsi) 
+            si = primsi;
+    }
+    return si;
 }
 
-bool UniformGridVoxel::IntersectP(const Ray &ray) {
+bool UniformGridVoxel::IntersectP(const Ray &ray, Float tMax) {
+    for (size_t i = 0; i < primitives.size(); i++) {
+        Primitive *prim = primitives[i];
+        if (prim->IntersectP(ray, tMax))
+            return true;
+    }
     return false;
 }
 
@@ -1248,13 +1258,116 @@ UniformGridAggregate::~UniformGridAggregate() {
     }
 }
 
-pstd::optional<ShapeIntersection> UniformGridAggregate::Intersect(const Ray &ray, Float tMax) {
-    return {};
+pstd::optional<ShapeIntersection> UniformGridAggregate::Intersect(const Ray &ray, Float rayTMax) const {
+    Float tMin, tMax;
+    if (!bounds.IntersectP(ray.o, ray.d, rayTMax, &tMin, &tMax)) {
+        return {};
+    }
+    Ray r = ray;
+    Point3f gridIntersect = r(tMin);
+    pstd::optional<ShapeIntersection> si;
+    // Setup 3D DDA for ray
+    float NextCrossingT[3], DeltaT[3];
+    int Step[3], Out[3], Pos[3];
+    for (int axis = 0; axis < 3; ++axis) {
+        if (r.d[axis] == -0.f) 
+            r.d[axis] = 0.f;
+        Pos[axis] = posToVoxel(gridIntersect, axis);
+        if (r.d[axis] >= 0) {
+            NextCrossingT[axis] = tMin + 
+                (voxelToPos(Pos[axis]+1, axis) - gridIntersect[axis]) / r.d[axis];
+            DeltaT[axis] = width[axis] / r.d[axis];
+            Step[axis] = 1;
+            Out[axis] = nVoxels[axis];
+        }
+        else {
+            NextCrossingT[axis] = tMin + 
+                (voxelToPos(Pos[axis], axis) - gridIntersect[axis]) / r.d[axis];
+            DeltaT[axis] = -width[axis] / r.d[axis];
+            Step[axis] = -1;
+            Out[axis] = -1;
+        }
+    }
+
+    while (true) {
+        // Check for intersection in current level and advance to next
+        UniformGridVoxel *voxel = voxels[offset(Pos[0], Pos[1], Pos[2])];
+        if (voxel) {
+            si = voxel->Intersect(ray, tMax);
+            if (si)
+                tMax = si->tHit;
+        }
+        // Advance to next voxel
+        // Find stepAxis for stepping to next voxel
+        int bits = ((NextCrossingT[0] < NextCrossingT[1]) << 2) + 
+                   ((NextCrossingT[0] < NextCrossingT[2]) << 1) + 
+                   ((NextCrossingT[1] < NextCrossingT[2]));
+        const int cmpToAxis[8] = {2, 1, 2, 1, 2, 2, 0, 0};
+        int stepAxis = cmpToAxis[bits];
+
+        if (tMax < NextCrossingT[stepAxis]) 
+            break;
+        Pos[stepAxis] += Step[stepAxis];
+        if (Pos[stepAxis] == Out[stepAxis]) 
+            break;
+        NextCrossingT[stepAxis] += DeltaT[stepAxis];
+    }
+
+    return si;
 }
 
-bool UniformGridAggregate::IntersectP(const Ray &ray, Float tMax) const {
-    
-    return true;
+bool UniformGridAggregate::IntersectP(const Ray &ray, Float rayTMax) const {
+    Float tMin, tMax; 
+    if (!bounds.IntersectP(ray.o, ray.d, rayTMax, &tMin, &tMax)) {
+        return false;
+    }
+    Ray r = ray;
+    Point3f gridIntersect = r(tMin);
+    // Setup 3D DDA for ray
+    float NextCrossingT[3], DeltaT[3];
+    int Step[3], Out[3], Pos[3];
+    for (int axis = 0; axis < 3; ++axis) {
+        if (r.d[axis] == -0.f)
+            r.d[axis] = 0.f;
+        Pos[axis] = posToVoxel(gridIntersect, axis);
+        if (r.d[axis] >= 0) {
+            NextCrossingT[axis] = tMin + 
+                (voxelToPos(Pos[axis]+1, axis) - gridIntersect[axis]) / r.d[axis];
+            DeltaT[axis] = width[axis] / r.d[axis];
+            Step[axis] = 1;
+            Out[axis] = nVoxels[axis];
+        }
+        else {
+            NextCrossingT[axis] = tMin + 
+                (voxelToPos(Pos[axis], axis) - gridIntersect[axis]) / r.d[axis];
+            DeltaT[axis] = -width[axis] / r.d[axis];
+            Step[axis] = -1;
+            Out[axis] = -1;
+        }
+    }
+
+    while (true) {
+        // Check for intersection in current level and advance to next
+        UniformGridVoxel *voxel = voxels[offset(Pos[0], Pos[1], Pos[2])];
+        if (voxel && voxel->IntersectP(r, tMax))
+            return true;
+        // Advance to next voxel
+        // Find stepAxis for stepping to next voxel
+        int bits = ((NextCrossingT[0] < NextCrossingT[1]) << 2) + 
+                   ((NextCrossingT[0] < NextCrossingT[2]) << 1) + 
+                   ((NextCrossingT[1] < NextCrossingT[2]));
+        const int cmpToAxis[8] = {2, 1, 2, 1, 2, 2, 0, 0};
+        int stepAxis = cmpToAxis[bits];
+
+        if (tMax < NextCrossingT[stepAxis]) 
+            break;
+        Pos[stepAxis] += Step[stepAxis];
+        if (Pos[stepAxis] == Out[stepAxis]) 
+            break;
+        NextCrossingT[stepAxis] += DeltaT[stepAxis];
+    }
+
+    return false;
 }
 
 UniformGridAggregate *UniformGridAggregate::Create(std::vector<Primitive> prims, const ParameterDictionary &params)

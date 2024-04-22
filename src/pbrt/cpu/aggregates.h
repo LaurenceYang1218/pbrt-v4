@@ -112,9 +112,11 @@ class UniformGridAggregate {
     static UniformGridAggregate *Create(std::vector<Primitive> prims, 
                                         const ParameterDictionary &parameters);
     ~UniformGridAggregate();
+
+    pstd::optional<ShapeIntersection> Intersect(const Ray &ray, Float tMax) const;
+    
     Bounds3f Bounds() const { return bounds; }
-    bool CanIntersect() const { return true; }
-    pstd::optional<ShapeIntersection> Intersect(const Ray &ray, Float tMax);
+
     bool IntersectP(const Ray &ray, Float tMax) const;
   private:
     int posToVoxel(const Point3f &p, int axis) const {
@@ -136,6 +138,7 @@ class UniformGridAggregate {
     std::vector<Primitive> primitives;
     std::vector<int> primitiveIndexes;
     Bounds3f bounds;
+    pthread_rwlock_t rwMutex;
 };
 
 }  // namespace pbrt
