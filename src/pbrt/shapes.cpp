@@ -1376,6 +1376,15 @@ std::string BilinearPatch::ToString() const {
                         meshIndex, blpIndex, area);
 }
 
+
+DistanceEstimator* DistanceEstimator::Create(const Transform *renderFromObject,
+                const Transform *objectFromRender, bool reverseOrientation,
+                const ParameterDictionary &parameters, const FileLoc *loc,
+                Allocator alloc)
+{
+
+}
+
 STAT_COUNTER("Geometry/Spheres", nSpheres);
 STAT_COUNTER("Geometry/Cylinders", nCylinders);
 STAT_COUNTER("Geometry/Disks", nDisks);
@@ -1491,6 +1500,9 @@ pstd::vector<Shape> Shape::Create(
                                            vertexIndices, P, alloc);
 
         shapes = Triangle::CreateTriangles(mesh, alloc);
+    }else if (name == "distanceestimator") {
+        shapes = {DistanceEstimator::Create(renderFromObject, objectFromRender, reverseOrientation,
+                                 parameters, loc, alloc)};
     } else
         ErrorExit(loc, "%s: shape type unknown.", name);
 

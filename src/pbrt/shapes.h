@@ -1538,6 +1538,38 @@ class BilinearPatch {
     static constexpr Float MinSphericalSampleArea = 1e-4;
 };
 
+class DistanceEstimator {
+  public: 
+    DistanceEstimator();
+
+    static DistanceEstimator *Create(const Transform *renderFromObject,
+                const Transform *objectFromRender, bool reverseOrientation,
+                const ParameterDictionary &parameters, const FileLoc *loc,
+                Allocator alloc);
+
+    std::string ToString() const;
+
+    Bounds3f Bounds() const;
+
+    DirectionCone NormalBounds() const { return DirectionCone::EntireSphere(); }
+
+    pstd::optional<ShapeIntersection> Intersect(
+        const Ray &ray, Float tMax = Infinity) const;
+
+    bool IntersectP(const Ray &ray, Float tMax = Infinity) const;
+
+    Float Area() const;
+
+    pstd::optional<ShapeSample> Sample(Point2f u) const;
+
+    Float PDF(const Interaction &) const;
+
+    pstd::optional<ShapeSample> Sample(const ShapeSampleContext &ctx,
+                                                           Point2f u) const;
+
+    Float PDF(const ShapeSampleContext &ctx, Vector3f wi) const;
+};
+
 inline Bounds3f Shape::Bounds() const {
     auto bounds = [&](auto ptr) { return ptr->Bounds(); };
     return Dispatch(bounds);

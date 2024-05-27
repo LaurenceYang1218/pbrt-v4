@@ -23,6 +23,7 @@ class Curve;
 class Sphere;
 class Cylinder;
 class Disk;
+class DistanceEstimator;
 
 struct ShapeSample;
 struct ShapeIntersection;
@@ -30,7 +31,7 @@ struct ShapeSampleContext;
 
 // Shape Definition
 class Shape
-    : public TaggedPointer<Sphere, Cylinder, Disk, Triangle, BilinearPatch, Curve> {
+    : public TaggedPointer<Sphere, Cylinder, Disk, Triangle, BilinearPatch, Curve, DistanceEstimator> {
   public:
     // Shape Interface
     using TaggedPointer::TaggedPointer;
