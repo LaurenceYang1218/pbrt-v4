@@ -1377,12 +1377,55 @@ std::string BilinearPatch::ToString() const {
 }
 
 
+std::string DistanceEstimator::ToString() const {
+    return StringPrintf("[ DistanceEstimator renderFromObject: %s "
+                    "objectFromRender: %s reverseOrientation: %s "
+                    "transformSwapsHandedness: %s radius: %f zMin: %f "
+                    "zMax: %f phiMax: %f ]",
+                    *renderFromObject, *objectFromRender, reverseOrientation,
+                    transformSwapsHandedness, radius, zMin, zMax, phiMax);
+}
+
 DistanceEstimator* DistanceEstimator::Create(const Transform *renderFromObject,
                 const Transform *objectFromRender, bool reverseOrientation,
                 const ParameterDictionary &parameters, const FileLoc *loc,
                 Allocator alloc)
 {
+    int maxIters = parameters.GetOneInt("maxiters", 10000);
+    Float radius = parameters.GetOneFloat("radius", 1.0f);
+    Float zMin = parameters.GetOneFloat("zMin", -radius);
+    Float zMax = parameters.GetOneFloat("zMax", radius);
+    Float phiMax = parameters.GetOneFloat("phiMax", 360.f);
+    return alloc.new_object<DistanceEstimator>(renderFromObject, objectFromRender, 
+                                reverseOrientation, maxIters, radius, zMin, zMax, phiMax);
+}
 
+Bounds3f DistanceEstimator::Bounds() const {
+    return (*renderFromObject)(
+    Bounds3f(Point3f(-radius, -radius, zMin), Point3f(radius, radius, zMax)));
+}
+
+Float DistanceEstimator::Area() const {
+    return phiMax * radius * (zMax - zMin);
+}
+
+
+Float DistanceEstimator::Evaluate(const Point3f &p) const {
+    return std::sqrt(p.x * p.x + p.y * p.y + p.z * p.z) - radius;
+}
+
+Vector3f DistanceEstimator::CalculateNormal(const Point3f &pos, float eps, 
+                                            const Vector3f &defaultNormal) const {
+    const Vector3f v1(1.0, -1.0, -1.0);
+    const Vector3f v2(-1.0, -1.0, 1.0);
+    const Vector3f v3(-1.0, 1.0, -1.0);
+    const Vector3f v4(1.0, 1.0, 1.0);
+    const Vector3f normal = v1 * Evaluate(pos + v1 * eps) + 
+                            v2 * Evaluate(pos + v2 * eps) + 
+                            v3 * Evaluate(pos + v3 * eps) + 
+                            v4 * Evaluate(pos + v4 * eps);
+    const Float length = Length(normal);
+    return length > 0 ? (normal / length) : defaultNormal;
 }
 
 STAT_COUNTER("Geometry/Spheres", nSpheres);

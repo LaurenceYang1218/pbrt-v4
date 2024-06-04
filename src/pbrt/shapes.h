@@ -1540,8 +1540,7 @@ class BilinearPatch {
 
 class DistanceEstimator {
   public: 
-    DistanceEstimator();
-
+    // DistanceEstimator Public Methods
     static DistanceEstimator *Create(const Transform *renderFromObject,
                 const Transform *objectFromRender, bool reverseOrientation,
                 const ParameterDictionary &parameters, const FileLoc *loc,
@@ -1549,25 +1548,104 @@ class DistanceEstimator {
 
     std::string ToString() const;
 
-    Bounds3f Bounds() const;
+    DistanceEstimator(const Transform *renderFromObject, const Transform *objectFromRender, 
+                    bool reverseOrientation, int maxIters, Float radius, Float zMin, Float zMax, Float phiMax)
+        : renderFromObject(renderFromObject),
+          objectFromRender(objectFromRender),
+          reverseOrientation(reverseOrientation),
+          maxIters(maxIters),
+          radius(radius),
+          zMin(Clamp(std::min(zMin, zMax), -radius, radius)),
+          zMax(Clamp(std::max(zMin, zMax), -radius, radius)),
+          phiMax(Radians(Clamp(phiMax, 0, 360))) {}
 
+    PBRT_CPU_GPU
+    Bounds3f Bounds() const;
+    
+    PBRT_CPU_GPU
     DirectionCone NormalBounds() const { return DirectionCone::EntireSphere(); }
 
-    pstd::optional<ShapeIntersection> Intersect(
-        const Ray &ray, Float tMax = Infinity) const;
+    PBRT_CPU_GPU
+    pstd::optional<ShapeIntersection> Intersect(const Ray &ray, 
+                                                Float tMax = Infinity) const {
+        pstd::optional<QuadricIntersection> isect = BasicIntersect(ray, tMax);
+        if (!isect) 
+            return {};
+        SurfaceInteraction intr = InteractionFromIntersection(*isect, -ray.d, ray.time);
+        return ShapeIntersection{intr, isect->tHit};
+    } 
 
-    bool IntersectP(const Ray &ray, Float tMax = Infinity) const;
+    PBRT_CPU_GPU
+    pstd::optional<QuadricIntersection> BasicIntersect(const Ray &r, Float tMax) const {
+        Float phi;
+        Point3f pHit;
+        Point3f oi = (*objectFromRender)(Point3f(r.o));
+        Vector3f di = (*objectFromRender)(Vector3f(r.d));
+        Float tHit = 0;
+        int count = 0;
+        while (count < maxIters) {
+            Float dist = Evaluate(oi + tHit * di);
+            if (dist < 1e-3) {
+                pHit = oi + tHit * di;
+                phi = std::atan2(pHit.y, pHit.x);
+                if (phi < 0) phi += 2 * Pi;
+                return QuadricIntersection{tHit, pHit, phi};
+            }
+            tHit += dist / Length(di);
+            count++;
+        }
+        return {};
+    }
 
+    PBRT_CPU_GPU
+    bool IntersectP(const Ray &ray, Float tMax = Infinity) const {
+        return BasicIntersect(ray, tMax).has_value();
+    }
+
+    PBRT_CPU_GPU
+    SurfaceInteraction InteractionFromIntersection(const QuadricIntersection &isect,
+                                                    Vector3f wo, Float time) const {
+        Point3f pHit = isect.pObj;
+        Vector3f pError(rayEpsilon, rayEpsilon, rayEpsilon);
+        // change eps.
+        Vector3f normal = CalculateNormal(pHit, normalEpsilon, -wo);
+        Vector3f dpdu, dpdv;
+        CoordinateSystem(normal, &dpdu, &dpdv);
+        Normal3f dndu(0, 0, 0);
+        Normal3f dndv(0, 0, 0);
+        bool flipNormal = reverseOrientation ^ transformSwapsHandedness;
+        Vector3f woObject = (*objectFromRender)(wo);
+        return (*renderFromObject)(SurfaceInteraction(
+                                    Point3fi(pHit, pError), Point2f(0, 0),
+                                    woObject, dpdu, dpdv, dndu, dndv, 
+                                    time, flipNormal));
+    }
+
+    PBRT_CPU_GPU
     Float Area() const;
 
-    pstd::optional<ShapeSample> Sample(Point2f u) const;
+    PBRT_CPU_GPU
+    pstd::optional<ShapeSample> Sample(Point2f u) const { return {}; }
 
-    Float PDF(const Interaction &) const;
+    Float PDF(const Interaction &) const { return 1 / Area(); }
 
     pstd::optional<ShapeSample> Sample(const ShapeSampleContext &ctx,
-                                                           Point2f u) const;
+                                                           Point2f u) const { return {}; }
 
-    Float PDF(const ShapeSampleContext &ctx, Vector3f wi) const;
+    Float PDF(const ShapeSampleContext &ctx, Vector3f wi) const { return 1 / Area(); }
+  
+  private:
+    Float Evaluate(const Point3f &p) const;
+    Vector3f CalculateNormal(const Point3f &p, float eps, const Vector3f &defaultNormal) const;
+    int maxIters;
+    Float radius;
+    Float zMin, zMax; 
+    Float phiMax;
+    Float hitEpsilon = 1e-3;
+    Float rayEpsilon = hitEpsilon * 10;
+    Float normalEpsilon = 1e-3;
+    const Transform *renderFromObject, *objectFromRender;
+    bool reverseOrientation, transformSwapsHandedness;
 };
 
 inline Bounds3f Shape::Bounds() const {
