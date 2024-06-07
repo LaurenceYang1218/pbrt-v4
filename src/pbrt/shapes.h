@@ -1538,17 +1538,17 @@ class BilinearPatch {
     static constexpr Float MinSphericalSampleArea = 1e-4;
 };
 
-class DistanceEstimator {
+class SphereDE {
   public: 
-    // DistanceEstimator Public Methods
-    static DistanceEstimator *Create(const Transform *renderFromObject,
+    // SphereDE Public Methods
+    static SphereDE *Create(const Transform *renderFromObject,
                 const Transform *objectFromRender, bool reverseOrientation,
                 const ParameterDictionary &parameters, const FileLoc *loc,
                 Allocator alloc);
 
     std::string ToString() const;
 
-    DistanceEstimator(const Transform *renderFromObject, const Transform *objectFromRender, 
+    SphereDE (const Transform *renderFromObject, const Transform *objectFromRender, 
                     bool reverseOrientation, int maxIters, Float radius, Float zMin, Float zMax, Float phiMax)
         : renderFromObject(renderFromObject),
           objectFromRender(objectFromRender),
@@ -1585,7 +1585,7 @@ class DistanceEstimator {
         int count = 0;
         while (count < maxIters) {
             Float dist = Evaluate(oi + tHit * di);
-            if (dist < 1e-3) {
+            if (dist < hitEpsilon) {
                 pHit = oi + tHit * di;
                 phi = std::atan2(pHit.y, pHit.x);
                 if (phi < 0) phi += 2 * Pi;
@@ -1641,9 +1641,9 @@ class DistanceEstimator {
     Float radius;
     Float zMin, zMax; 
     Float phiMax;
-    Float hitEpsilon = 1e-3;
+    Float hitEpsilon = 1e-4;
     Float rayEpsilon = hitEpsilon * 10;
-    Float normalEpsilon = 1e-3;
+    Float normalEpsilon = 1e-4;
     const Transform *renderFromObject, *objectFromRender;
     bool reverseOrientation, transformSwapsHandedness;
 };

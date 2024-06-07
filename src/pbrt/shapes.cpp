@@ -1377,8 +1377,8 @@ std::string BilinearPatch::ToString() const {
 }
 
 
-std::string DistanceEstimator::ToString() const {
-    return StringPrintf("[ DistanceEstimator renderFromObject: %s "
+std::string SphereDE::ToString() const {
+    return StringPrintf("[ SphereDE renderFromObject: %s "
                     "objectFromRender: %s reverseOrientation: %s "
                     "transformSwapsHandedness: %s radius: %f zMin: %f "
                     "zMax: %f phiMax: %f ]",
@@ -1386,7 +1386,7 @@ std::string DistanceEstimator::ToString() const {
                     transformSwapsHandedness, radius, zMin, zMax, phiMax);
 }
 
-DistanceEstimator* DistanceEstimator::Create(const Transform *renderFromObject,
+SphereDE* SphereDE::Create(const Transform *renderFromObject,
                 const Transform *objectFromRender, bool reverseOrientation,
                 const ParameterDictionary &parameters, const FileLoc *loc,
                 Allocator alloc)
@@ -1396,25 +1396,25 @@ DistanceEstimator* DistanceEstimator::Create(const Transform *renderFromObject,
     Float zMin = parameters.GetOneFloat("zMin", -radius);
     Float zMax = parameters.GetOneFloat("zMax", radius);
     Float phiMax = parameters.GetOneFloat("phiMax", 360.f);
-    return alloc.new_object<DistanceEstimator>(renderFromObject, objectFromRender, 
+    return alloc.new_object<SphereDE>(renderFromObject, objectFromRender, 
                                 reverseOrientation, maxIters, radius, zMin, zMax, phiMax);
 }
 
-Bounds3f DistanceEstimator::Bounds() const {
+Bounds3f SphereDE::Bounds() const {
     return (*renderFromObject)(
     Bounds3f(Point3f(-radius, -radius, zMin), Point3f(radius, radius, zMax)));
 }
 
-Float DistanceEstimator::Area() const {
+Float SphereDE::Area() const {
     return phiMax * radius * (zMax - zMin);
 }
 
 
-Float DistanceEstimator::Evaluate(const Point3f &p) const {
+Float SphereDE::Evaluate(const Point3f &p) const {
     return std::sqrt(p.x * p.x + p.y * p.y + p.z * p.z) - radius;
 }
 
-Vector3f DistanceEstimator::CalculateNormal(const Point3f &pos, float eps, 
+Vector3f SphereDE::CalculateNormal(const Point3f &pos, float eps, 
                                             const Vector3f &defaultNormal) const {
     const Vector3f v1(1.0, -1.0, -1.0);
     const Vector3f v2(-1.0, -1.0, 1.0);
@@ -1543,8 +1543,8 @@ pstd::vector<Shape> Shape::Create(
                                            vertexIndices, P, alloc);
 
         shapes = Triangle::CreateTriangles(mesh, alloc);
-    }else if (name == "distanceestimator") {
-        shapes = {DistanceEstimator::Create(renderFromObject, objectFromRender, reverseOrientation,
+    }else if (name == "spherede") {
+        shapes = {SphereDE::Create(renderFromObject, objectFromRender, reverseOrientation,
                                  parameters, loc, alloc)};
     } else
         ErrorExit(loc, "%s: shape type unknown.", name);
